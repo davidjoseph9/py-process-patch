@@ -63,11 +63,11 @@ class PatchManager:
         else:
             return False
         logger.debug(f"Hooking - type: {hook_type} address: {hex(int(patch.address))}")
-        success = self.VirtualProtect(pymem_instance.process_handle, int(patch.address), 128, pymem.ressources.structure.MEMORY_PROTECTION.PAGE_EXECUTE_READWRITE)
-        if not success:
-            logger.error(f"Changing permissions the page of memory {hex(int(patch.address))} - "
-                         f"size: {len(hook_bytes)} failed. kernel32.GetLastError - {self.kernel32.GetLastError()}")
-            return False
+        # success = self.VirtualProtect(pymem_instance.process_handle, int(patch.address), 128, pymem.ressources.structure.MEMORY_PROTECTION.PAGE_EXECUTE_READWRITE)
+        # if not success:
+        #     logger.error(f"Changing permissions the page of memory {hex(int(patch.address))} - "
+        #                  f"size: {len(hook_bytes)} failed. kernel32.GetLastError - {self.kernel32.GetLastError()}")
+        #     return False
         pymem_instance.write_bytes(int(patch.address), bytes(hook_bytes), len(hook_bytes))
         return True
 
