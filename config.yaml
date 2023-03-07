@@ -1,8 +1,8 @@
-name: MapleStory Hacks
+name: Sample Game patches
 architecture: x86
 mode: 64
 processes:
-- name: "MapleStory.exe"
+- name: "MyProcess.exe"
   copies:
   - name: crc_region_copy
     src_address: 0x140001000
@@ -49,8 +49,8 @@ processes:
       hook_type: call_ptr
       hook_cave: is_debugger_always_false
       description: |
-        Overwrite the IsDebuggerPresent pointer so that 
-        our code cave is called instead. Always return false,
+        Overwrite the IsDebuggerPresent pointer to the address 
+        of our code cave. Always return false,
         to prevent detection of user mode debugger.
       asm: |
         xor eax, eax
