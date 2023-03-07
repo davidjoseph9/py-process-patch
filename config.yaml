@@ -1,0 +1,57 @@
+name: MapleStory Hacks
+architecture: x86
+mode: 64
+processes:
+- name: "MapleStory.exe"
+  copies:
+  - name: crc_region_copy
+    src_address: 0x140001000
+    size: 0x4800000
+  patch_groups:
+  - name: Bypass
+    patches:
+    - name: CRC1 Bypass
+      enable: true  # enable on start
+      patch_type: hook
+      hook_type: jump
+      address: 0x1484C5BE5
+      vars:
+        region_start: "0x140001000"
+        region_size: "0x4800000"
+        return_address: "0x1484C5C05"
+      asm: |
+        pop rax
+        push rsi
+        push rdi
+        push rcx
+        mov rcx, rax
+        mov rsi, {{ copy_map.crc_region_copy.address }}
+        mov rdi, [rsp+0x28]
+        repe movsb
+        pop rcx
+        pop rdi
+        pop rsi
+        sub rsp, 0x08
+        push r12
+        mov r12, rbp
+        push rbp
+        mov rbp, r12
+        mov [rsp+0x10], rbp
+        pop rbp
+        mov r12, [rsp]
+        add rsp, 0x08
+        mov rax, {{ return_address }}
+        jmp rax
+    - name: IsDebuggerPresent
+      enable: true
+      address: 0x144801350
+      patch_type: hook
+      hook_type: call_ptr
+      hook_cave: is_debugger_always_false
+      description: |
+        Overwrite the IsDebuggerPresent pointer so that 
+        our code cave is called instead. Always return false,
+        to prevent detection of user mode debugger.
+      asm: |
+        xor eax, eax
+        ret
