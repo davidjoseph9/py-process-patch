@@ -25,12 +25,12 @@ class PatchManager:
         self.ks_assembler = None
         self.kernel32 = ctypes.windll.kernel32
 
-        # VirtualProtect()
-        self.VirtualProtect = ctypes.windll.kernel32.VirtualProtect
-        self.VirtualProtect.argtypes = [
-            wt.LPVOID, ctypes.c_size_t, wt.DWORD, wt.LPVOID
+        self.VirtualProtectEx = ctypes.windll.kernel32.VirtualProtectEx
+        self.VirtualProtectEx.argtypes = [
+            wt.HANDLE, wt.LPVOID, ctypes.c_size_t,
+            wt.DWORD, wt.LPVOID
         ]
-        self.VirtualProtect.restype = wt.BOOL
+        self.VirtualProtectEx.restype = wt.BOOL
 
     @property
     def template_env(self):
@@ -63,7 +63,9 @@ class PatchManager:
         else:
             return False
         logger.debug(f"Hooking - type: {hook_type} address: {hex(int(patch.address))}")
-        success = self.VirtualProtect(pymem_instance.process_handle, int(patch.address), len(hook_bytes), pymem.ressources.structure.MEMORY_PROTECTION.PAGE_EXECUTE_READWRITE)
+        old_protection = ctypes.pointer(wt.DWORD())
+        success = self.VirtualProtectEx(pymem_instance.process_handle, int(patch.address), len(hook_bytes),
+                                        pymem.ressources.structure.MEMORY_PROTECTION.PAGE_EXECUTE_READWRITE, old_protection)
         if not success:
             logger.error(f"Changing permissions the page of memory {hex(int(patch.address))} - "
                          f"size: {len(hook_bytes)} failed. kernel32.GetLastError - {self.kernel32.GetLastError()}")
