@@ -2,7 +2,7 @@ name: Sample Game patches
 architecture: x86
 mode: 64
 processes:
-- name: "MapleStory.exe"
+- name: "NotMS.exe"
   copies:
   - name: crc_region_copy
     src_address: 0x140001000
