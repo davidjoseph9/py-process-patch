@@ -1,7 +1,7 @@
-# py-process-patch-framework
+# py-process-patch
 
 ## About
-A set of tools to facilitate patching the memory of processes for 
+A set of tools to facilitate patching the memory of processes running on Windows for 
 modifying their behavior or extending their capabilities.
 
 ## Features
