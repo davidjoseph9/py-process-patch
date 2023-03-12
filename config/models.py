@@ -17,6 +17,12 @@ class HookType(enum.Enum):
     call_ptr = 2
 
 
+class PatchPointer(pydantic.BaseModel):
+    module: str
+    offset: Any = 0
+    address: Optional[Any]
+
+
 class PatchModel(pydantic.BaseModel):
     name: str
 
@@ -36,12 +42,14 @@ class PatchModel(pydantic.BaseModel):
     asm: Optional[str] = None
     code_cave_address: Optional[int] = None
 
-    address: Optional[str] = None
-    offset: Optional[str] = None
+    process: Optional[str] = None
     module: Optional[str] = None
+    address: Optional[str] = None
+    offset: Optional[str] = 0
 
     bytes: Optional[str] = None
     original_bytes: Optional[str] = None
+    pointer: Optional[PatchPointer]
 
     class Config:
         arbitrary_types_allowed = True
@@ -51,15 +59,10 @@ class GroupPatchModel(pydantic.BaseModel):
     name: str
     patches: List[PatchModel]
     pymem_instance: Optional[pymem.Pymem] = None
+    process: Optional[str] = None
 
     class Config:
         arbitrary_types_allowed = True
-
-
-class PatchPointer(pydantic.BaseModel):
-    module: str
-    offset: Any
-    address: Optional[Any]
 
 
 class CopyMemoryModel(pydantic.BaseModel):
@@ -84,7 +87,6 @@ class ProcessPatchConfig(pydantic.BaseModel):
     pymem_instance: Optional[pymem.Pymem] = None
     modules: List[Any] = None
     module_map: Optional[dict] = None
-    pointer: Optional[PatchPointer]
 
     class Config:
         arbitrary_types_allowed = True

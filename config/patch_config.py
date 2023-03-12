@@ -44,6 +44,10 @@ class PatchConfig:
     def ks_mode(self):
         return self._ks_mode
 
+    @property
+    def process_patch_group_map(self):
+        return self._process_patch_group_map
+
     def load_config(self):
         logger.info(f"Loading the configuration file '{self._config_path}'")
 
@@ -97,6 +101,7 @@ class PatchConfig:
             self._load_copies(process_patch_config)
 
             for group_config in process_patch_config.patch_groups:
+                group_config.process = process_name
                 self._load_patch_group(process_patch_config, group_config)
 
     def _load_copies(self, process_patch_config: ProcessPatchConfig):
@@ -116,36 +121,9 @@ class PatchConfig:
                     return False
                 copy_mem.src_address = module_def.start_address
             elif copy_mem.pointer:
-                if copy_mem.pointer.module is not None:
-                    module_def = process_patch_config.module_map.get(copy_mem.pointer.module)
-                    if module_def is None:
-                        logger.error(f"Cannot create copy of the module '{copy_mem.pointer.module}'"
-                                     f" of the process '{process_patch_config.name}'. The module cannot be found in the loaded "
-                                     f"module map.")
-                        return False
-
-                    copy_mem.pointer.address = module_def.start_address
-
-                if isinstance(copy_mem.pointer.address, str):
-                    copy_mem.pointer.address = int(copy_mem.pointer.address)
-
-                if isinstance(copy_mem.pointer.offset, str):
-                    copy_mem.pointer.offset = int(copy_mem.pointer.offset)
-
-                pointer_target_address = copy_mem.pointer.address + copy_mem.pointer.offset
-                if self.ks_mode == KS_MODE_32:
-                    read_byte_count = 4
-                else:
-                    read_byte_count = 8
-
-                try:
-                    pointer_address_bytes = process_patch_config.pymem_instance.read_bytes(pointer_target_address,
-                                                                                           read_byte_count)
-                except pymem.exception.MemoryReadError as e:
-                    logger.error(f"Failed to read from pointer address from '{hex(pointer_target_address)}'. {str(e)}")
+                copy_mem.src_address = self._patch_manager.load_pointer(process_patch_config, copy_mem.pointer)
+                if copy_mem.src_address is None:
                     continue
-
-                copy_mem.src_address = int.from_bytes(pointer_address_bytes, "little")
 
             if isinstance(copy_mem.size, str):
                 copy_mem.size = int(copy_mem.size)
@@ -168,21 +146,26 @@ class PatchConfig:
                 copy_mem.data = process_patch_config.pymem_instance.read_bytes(copy_mem.src_address, copy_mem.size)
             except pymem.exception.MemoryReadError as e:
                 logger.error(f"Cannot create the copy '{copy_mem.name}'. Failed to read data from the address "
-                             f"'{hex(pointer_target_address)}'. {str(e)}")
+                             f"'{hex(copy_mem.src_address)}'. {str(e)}")
                 continue
 
             copy_mem.address = process_patch_config.pymem_instance.allocate(copy_mem.size)
+            logger.info(f"Allocated {hex(copy_mem.size)} bytes from {hex(copy_mem.src_address)} for the copy {copy_mem.name}")
+            process_patch_config.pymem_instance.write_bytes(copy_mem.address, copy_mem.data, copy_mem.size)
 
             process_patch_config.copy_map[copy_mem.name] = copy_mem
 
     def _load_patch_group(self, process_patch_config: ProcessPatchConfig, patch_group: GroupPatchModel):
+        print("\n\n")
         logger.info(f"Loading patch list for the group '{patch_group.name}'")
 
         for idx in range(len(patch_group.patches)):
             patch_config = patch_group.patches[idx]
             full_patch_name = f"{patch_group.name}/{patch_config.name}"
-            patch_config.pymem_instance = process_patch_config.pymem_instance
             logger.info(f"Loading the patch '{full_patch_name}'")
+
+            patch_config.pymem_instance = process_patch_config.pymem_instance
+            patch_config.process = patch_group.process
 
             if patch_config.patch_type is None:
                 logger.error(f"Invalid patch '{full_patch_name}'. No patch type specified, skipping...")
@@ -193,10 +176,15 @@ class PatchConfig:
                 logger.error(f"Invalid patch type specified for the patch '{full_patch_name}'.")
                 return
 
+            if isinstance(patch_config.address, str):
+                patch_config.address = int(patch_config.address)
+
+            if isinstance(patch_config.offset, str):
+                patch_config.offset = int(patch_config.offset)
+
             if not patch_config.address:
                 if not patch_config.offset and not patch_config.module and not patch_config.pointer:
-                    logger.error(f"The patch '{patch_config.name}' is invalid. "
-                                 f"Unrecognized patch type specified for the patch .")
+                    logger.error(f"The patch '{patch_config.name}' is invalid.")
                     return
                 elif patch_config.module:
                     module_def = process_patch_config.module_map.get(patch_config.module)
@@ -204,7 +192,7 @@ class PatchConfig:
                         logger.error(f"Cannot create copy of the module '{patch_config.module}'"
                                      f" of the process '{process_patch_config.name}'")
                         return False
-                    patch_config.address = int(module_def.start_address) + int(patch_config.offset)
+                    patch_config.address = int(module_def.start_address)
 
             if patch_config.patch_type.name == PatchType.hook.name:
                 try:
@@ -216,9 +204,20 @@ class PatchConfig:
             if patch_config.vars is None:
                 patch_config.vars = dict()
 
-            patch_config.vars['process_patch_group_map'] = self._process_patch_group_map[process_patch_config.name]
-            patch_config.vars['copy_map'] = self._process_patch_group_map[process_patch_config.name].copy_map
-            patch_config.vars['module_map'] = self._process_patch_group_map[process_patch_config.name].module_map
+            process_patch_group = self._process_patch_group_map[process_patch_config.name]
+
+            if patch_config.pointer is not None:
+                address_pointed = self._patch_manager.load_pointer(process_patch_group, patch_config.pointer)
+                if patch_config.offset:
+                    patch_config.address = address_pointed + patch_config.offset
+                else:
+                    patch_config.address = address_pointed
+
+                logger.debug(f"Resolved pointer for the patch {patch_config.name} to {hex(patch_config.address)}")
+
+            patch_config.vars['process_patch_group_map'] = process_patch_group
+            patch_config.vars['copy_map'] = process_patch_group.copy_map
+            patch_config.vars['module_map'] = process_patch_group.module_map
             patch_config.vars['module'] = patch_config.module
 
             if patch_config.enable:
