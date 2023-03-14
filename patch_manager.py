@@ -1,5 +1,4 @@
 import enum
-
 import jinja2
 from keystone import *
 
@@ -146,8 +145,6 @@ class PatchManager:
         return True
 
     def get_relative_jump_bytes(self, target_address: int, relative_address: int = None):
-        logger.debug(f"Get relative jump bytes: jmp {hex(target_address)}")
-        logger.debug(f"{self.assemble(f'jmp {hex(target_address)}', address=relative_address)}")
         return self.assemble(f"jmp {hex(target_address)}", address=relative_address)
 
     def get_relative_call_bytes(self, target_address: int, relative_address: int = None):
@@ -204,10 +201,10 @@ class PatchManager:
             read_byte_count = 8
 
         try:
-            pointer_address_bytes = process_patch_config.pymem_instance.read_bytes(pointer_target_address,
-                                                                                   read_byte_count)
+            pointer_address_bytes = process_patch_config.pymem_instance.read_bytes(pointer_target_address, read_byte_count)
         except pymem.exception.MemoryReadError as e:
             logger.error(f"Failed to read from pointer address from '{hex(pointer_target_address)}'. {str(e)}")
             return None
 
         return int.from_bytes(pointer_address_bytes, "little")
+

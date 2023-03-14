@@ -1,6 +1,7 @@
 import ctypes
 import ctypes.wintypes as wt
 import logging
+import time
 import os.path
 
 import yaml
@@ -87,13 +88,15 @@ class PatchConfig:
             if process_name not in self._process_patch_group_map:
                 self._process_patch_group_map[process_name] = process_patch_config
 
-            try:
-                pymem_instance = pymem.Pymem(process_name=process_name)
-            except pymem.exception.PymemError as e:
-                logger.error(f"Failed to get handle of the process '{process_name}'. {str(e)}")
-                return False
+            if process_patch_config.wait_for_process:
+                process_patch_config.pymem_instance = self.wait_for_process(process_name)
+            else:
+                try:
+                    process_patch_config.pymem_instance = pymem.Pymem(process_name=process_name)
+                except pymem.exception.PymemError as e:
+                    logger.error(f"Failed to get handle of the process '{process_name}'. {str(e)}")
+                    return False
 
-            process_patch_config.pymem_instance = pymem_instance
             self.load_process_modules(process_patch_config)
             # logger.debug(f"Modules loaded for the process '{process_name}.\n"
             #              f"{yaml.safe_dump(list(process_patch_config.module_map.keys()))}")
@@ -131,7 +134,7 @@ class PatchConfig:
             if isinstance(copy_mem.src_address, str):
                 copy_mem.src_address = int(copy_mem.src_address)
 
-            logger.debug(f"Pointer address for the patch '{copy_mem.name}' has been resolved {hex(copy_mem.src_address)}")
+            logger.debug(f"Source address for the patch '{copy_mem.name}' has been resolved {hex(copy_mem.src_address)}")
             logger.info(f"Creating copy, reading {hex(copy_mem.size)} bytes from {hex(copy_mem.src_address)}")
 
             try:
@@ -156,7 +159,7 @@ class PatchConfig:
             process_patch_config.copy_map[copy_mem.name] = copy_mem
 
     def _load_patch_group(self, process_patch_config: ProcessPatchConfig, patch_group: GroupPatchModel):
-        print("\n\n")
+        print("\n")
         logger.info(f"Loading patch list for the group '{patch_group.name}'")
 
         for idx in range(len(patch_group.patches)):
@@ -189,7 +192,7 @@ class PatchConfig:
                 elif patch_config.module:
                     module_def = process_patch_config.module_map.get(patch_config.module)
                     if module_def is None:
-                        logger.error(f"Cannot create copy of the module '{patch_config.module}'"
+                        logger.error(f"Cannot retrieve the module '{patch_config.module}'"
                                      f" of the process '{process_patch_config.name}'")
                         return False
                     patch_config.address = int(module_def.start_address)
@@ -240,3 +243,13 @@ class PatchConfig:
             module = Module(name=module_name, start_address=module_handle, path=module_path)
             process_patch_config.modules.append(module)
             process_patch_config.module_map[module_name] = module
+
+    def wait_for_process(self, process_name: str):
+        logger.info(f"Waiting for the process '{process_name}' to become available")
+        while True:
+            try:
+                return pymem.Pymem(process_name=process_name)
+            except pymem.exception.ProcessNotFound as e:
+                logger.error(f"Failed to get handle of the process '{process_name}'. {str(e)}")
+            time.sleep(0.1)
+        return None

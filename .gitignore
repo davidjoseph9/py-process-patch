@@ -2,3 +2,4 @@ venv
 .idea
 config.yaml
 examples/config.yaml
+py_process_patch.egg-info

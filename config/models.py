@@ -87,6 +87,7 @@ class ProcessPatchConfig(pydantic.BaseModel):
     pymem_instance: Optional[pymem.Pymem] = None
     modules: List[Any] = None
     module_map: Optional[dict] = None
+    wait_for_process: bool = False
 
     class Config:
         arbitrary_types_allowed = True

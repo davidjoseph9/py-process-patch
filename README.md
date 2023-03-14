@@ -11,5 +11,9 @@ modifying their behavior or extending their capabilities.
 * <b>Copy memory</b><br/>
    Create copies of memory regions within the target process. This is useful for bypassing memory integrity checks.
 * <b>Read & Analyze</b><br/>
-   Read and analyze data read from a process. 
-    
+   Read and analyze data read from a process.
+
+## Getting started
+```
+pip install .
+```
