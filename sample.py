@@ -6,11 +6,14 @@ SAMPLE_CONFIG_PATH = "examples/config.yaml"
 logger = logging.getLogger()
 
 def main():
-    try:
-        patch_manager = PatchManager()
-        patch_manager.load_config(SAMPLE_CONFIG_PATH)
-    except KeyboardInterrupt:
-        logger.info("Stopping...")
+    while True:
+        try:
+            patch_manager = PatchManager()
+            patch_manager.load_config(SAMPLE_CONFIG_PATH)
+        except KeyboardInterrupt:
+            logger.info("Stopping...")
+        break
+    # Free memory after exiting
 
 
 if __name__ == '__main__':
