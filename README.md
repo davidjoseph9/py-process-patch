@@ -109,7 +109,7 @@ processes:
       vars:
         return_offset: 0xEA6C4
       asm: |
-        pop ebx
+        pop rbx
         mov rax, [rsp+0x20]
   
         _BlackCipherCheck:
