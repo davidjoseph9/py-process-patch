@@ -53,6 +53,7 @@ processes:
           size: 8
           value: 0x1484C5C05
       asm: |
+        pop rbx
         push rsi
         push rdi
         push rcx
@@ -73,7 +74,8 @@ processes:
         mov r12, [rsp]
         add rsp, 0x08
         mov rbx, 
-        jmp qword ptr [{{ return_address | hex }}]
+        mov rbx, {{ return_address | hex }}
+        jmp rbx
 ```
 
 ```yaml
@@ -107,6 +109,7 @@ processes:
       vars:
         return_offset: 0xEA6C4
       asm: |
+        pop ebx
         mov rax, [rsp+0x20]
   
         _BlackCipherCheck:
