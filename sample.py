@@ -12,7 +12,7 @@ def main():
             patch_manager.load_config(SAMPLE_CONFIG_PATH)
         except KeyboardInterrupt:
             logger.info("Stopping...")
-        break
+            break
     # Free memory after exiting
 
 

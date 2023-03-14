@@ -147,15 +147,15 @@ class PatchManager:
             write_bytes = target_address.to_bytes(QWORD_SIZE, byteorder='little')
             ptr_address = self.get_memory(patch.process, len(write_bytes))
             patch.pymem_instance.write_bytes(ptr_address, write_bytes, len(write_bytes))
-            print(f"jmp qword ptr [{hex(ptr_address)}]")
-            return self.assemble(f"jmp qword ptr [{hex(ptr_address)}]", address=relative_address)
+            print(f"jmp qword ptr [{f'{ptr_address:#0{10}x}'}]")
+            return self.assemble(f"jmp qword ptr [{f'{ptr_address:#0{10}x}'}]", relative_address=0)
         elif self._config.ks_mode == KS_MODE_32:
             # Write the 32bit pointer to the address we'll be jumping to, to the memory we allocated at the start
             write_bytes = target_address.to_bytes(DWORD_SIZE, byteorder='little')
             ptr_address = self.get_memory(patch.process, len(write_bytes))
             patch.pymem_instance.write_bytes(ptr_address, write_bytes, len(write_bytes))
 
-            return self.assemble(f"jmp dword ptr [{hex(ptr_address)}]", address=relative_address)
+            return self.assemble(f"jmp dword ptr [{hex(ptr_address)}]")
 
     def get_absolute_call_bytes(self, patch: PatchModel, target_address: int, relative_address: int = None):
         if self._config.ks_mode == KS_MODE_64:
