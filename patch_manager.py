@@ -108,9 +108,9 @@ class PatchManager:
                 patch.pymem_instance.write_bytes(patch.code_cave_address, asm_bytes, len(asm_bytes))
 
                 if patch.hook_type.name == HookType.jump.name:
-                    patch.write_bytes = self.get_absolute_jump_bytes(patch, patch.code_cave_address)
+                    patch.write_bytes = self.get_absolute_jump_bytes(patch.code_cave_address)
                 elif patch.hook_type.name == HookType.call.name:
-                    patch.write_bytes = self.get_absolute_call_bytes(patch, patch.code_cave_address)
+                    patch.write_bytes = self.get_absolute_call_bytes(patch.code_cave_address)
                 elif patch.hook_type.name == HookType.call_ptr.name:
                     patch.write_bytes = patch.code_cave_address.to_bytes(8, byteorder='little')
 

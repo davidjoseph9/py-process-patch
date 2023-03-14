@@ -171,6 +171,10 @@ class PatchConfig:
                 continue
 
             copy_mem.address = process_config.pymem_instance.allocate(copy_mem.size)
+            if copy_mem.address is None:
+                logger.error(f"Cannot allocate {copy_mem.size} bytes for the copy '{copy_mem.name}'")
+                continue
+
             logger.info(f"Allocated {hex(copy_mem.size)} bytes from {hex(copy_mem.src_address)} for the copy {copy_mem.name}")
             process_config.pymem_instance.write_bytes(copy_mem.address, copy_mem.data, copy_mem.size)
 
