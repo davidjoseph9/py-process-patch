@@ -98,7 +98,7 @@ class PatchManager:
 
             if patch.patch_type.name == PatchType.write.name:
                 if patch.write_bytes is not None:
-                    patch.write_bytes = bytearray.fromhex(patch.write_bytes)
+                    patch.write_bytes = bytearray.fromhex(patch.write_bytes.decode("utf-8"))
                 elif asm_bytes is not None:
                     patch.write_bytes = asm_bytes
             elif patch.patch_type.name == PatchType.hook.name:
