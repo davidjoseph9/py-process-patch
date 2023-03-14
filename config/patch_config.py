@@ -108,7 +108,7 @@ class PatchConfig:
                 
             try:
                 process_config.memory_allocated.start_address = process_config.pymem_instance.allocate(process_config.memory_allocated.size)
-                process_config.memory_allocated.ptr = process_config.memory_allocated.ptr
+                process_config.memory_allocated.ptr = process_config.memory_allocated.start_address
                 process_config.memory_allocated.size = process_config.memory_allocated.size
             except Exception as e:
                 logger.error(f"Failed to allocate '{process_config.memory_allocated.size}' in the process "
