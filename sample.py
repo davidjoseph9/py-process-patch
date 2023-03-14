@@ -5,11 +5,13 @@ SAMPLE_CONFIG_PATH = "examples/config.yaml"
 
 logger = logging.getLogger()
 
+
 def main():
+    patch_manager = PatchManager()
+    patch_manager.load_config(SAMPLE_CONFIG_PATH)
     while True:
         try:
-            patch_manager = PatchManager()
-            patch_manager.load_config(SAMPLE_CONFIG_PATH)
+            pass
         except KeyboardInterrupt:
             logger.info("Stopping...")
             break
