@@ -141,38 +141,6 @@ class PatchManager:
 
         return True
 
-    def get_absolute_jump_bytes(self, patch: PatchModel, target_address: int, relative_address: int = None):
-        if self._config.ks_mode == KS_MODE_64:
-            # Write the 64bit pointer to the address we'll be jumping to, to the memory we allocated at the start
-            write_bytes = target_address.to_bytes(QWORD_SIZE, byteorder='little')
-            ptr_address = self.get_memory(patch.process, len(write_bytes))
-            patch.pymem_instance.write_bytes(ptr_address, write_bytes, len(write_bytes))
-            print(f"jmp qword ptr [{f'{ptr_address:#0{10}x}'}]")
-            return self.assemble(f"jmp qword ptr [{f'{ptr_address:#0{10}x}'}]", relative_address=0)
-        elif self._config.ks_mode == KS_MODE_32:
-            # Write the 32bit pointer to the address we'll be jumping to, to the memory we allocated at the start
-            write_bytes = target_address.to_bytes(DWORD_SIZE, byteorder='little')
-            ptr_address = self.get_memory(patch.process, len(write_bytes))
-            patch.pymem_instance.write_bytes(ptr_address, write_bytes, len(write_bytes))
-
-            return self.assemble(f"jmp dword ptr [{hex(ptr_address)}]")
-
-    def get_absolute_call_bytes(self, patch: PatchModel, target_address: int, relative_address: int = None):
-        if self._config.ks_mode == KS_MODE_64:
-            # Write the 64bit pointer to the address we'll be jumping to, to the memory we allocated at the start
-            write_bytes = target_address.to_bytes(QWORD_SIZE, byteorder='little')
-            ptr_address = self.get_memory(patch.process, len(write_bytes))
-            patch.pymem_instance.write_bytes(ptr_address, write_bytes, len(write_bytes))
-
-            return self.assemble(f"call qword ptr [{hex(ptr_address)}]", 0x00000000)
-        elif self._config.ks_mode == KS_MODE_32:
-            # Write the 32bit pointer to the address we'll be jumping to, to the memory we allocated at the start
-            write_bytes = target_address.to_bytes(DWORD_SIZE, byteorder='little')
-            ptr_address = self.get_memory(patch.process, len(write_bytes))
-            patch.pymem_instance.write_bytes(ptr_address, write_bytes, len(write_bytes))
-
-            return self.assemble(f"call dword ptr [{hex(ptr_address)}]", 0x00000000)
-
     def get_memory(self, process_name: str, size: int):
         process_config = self._config._process_patch_group_map.get(process_name)
         if process_config is None:
@@ -192,11 +160,11 @@ class PatchManager:
     # def get_relative_call_bytes(self, target_address: int, relative_address: int = None):
     #     return self.assemble(f"call {hex(target_address)}", address=relative_address)
     #
-    # def get_absolute_jump_bytes(self, target_address: int, register: str = "rbx"):
-    #     return self.assemble(f"push {register}; mov {register}, {hex(target_address)}; jmp {register}")
-    #
-    # def get_absolute_call_bytes(self, target_address: int, register: str = "rbx"):
-    #     return self.assemble(f"push {register}; mov {register}, {hex(target_address)}; call {register}; pop {register};")
+    def get_absolute_jump_bytes(self, target_address: int, register: str = "rbx"):
+        return self.assemble(f"push {register}; mov {register}, {hex(target_address)}; jmp {register}")
+
+    def get_absolute_call_bytes(self, target_address: int, register: str = "rbx"):
+        return self.assemble(f"push {register}; mov {register}, {hex(target_address)}; call {register}; pop {register};")
 
     def assemble(self, code: str, address: int = None):
         try:
