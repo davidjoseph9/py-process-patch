@@ -1,3 +1,4 @@
+import atexit
 import enum
 import jinja2
 from keystone import *
@@ -36,9 +37,18 @@ class PatchManager:
         self._template_env.filters.update(hex=hex)
         self._config_path = None
         self._config = None
-        self._memory_allocated_ptr = None
         self.ks_assembler = None
         self.kernel32 = ctypes.windll.kernel32
+
+        atexit.register(self._free_allocated_memory)
+
+    def _free_allocated_memory(self):
+        for key, process_config in self._config._process_patch_group_map.items():
+            if process_config.memory_allocated.start_address != 0:
+                process_config.pymem_instance.free(process_config.memory_allocated.start_address)
+            for copy in process_config.copies:
+                if copy.address is not None:
+                    process_config.pymem_instance.free(copy.address)
 
     @property
     def template_env(self):
@@ -90,11 +100,9 @@ class PatchManager:
                 elif asm_bytes is not None:
                     patch.write_bytes = asm_bytes
             elif patch.patch_type.name == PatchType.hook.name:
-                patch.code_cave_address = self._memory_allocated_ptr
-
-                logger.debug(f"Allocating code cave at '{hex(patch.code_cave_address)}' size {len(asm_bytes)}")
-
                 patch.code_cave_address = self.get_memory(patch.process, len(asm_bytes))
+                logger.debug(f"Writing code cave to '{hex(patch.code_cave_address)}' size {len(asm_bytes)}")
+
                 patch.pymem_instance.write_bytes(patch.code_cave_address, asm_bytes, len(asm_bytes))
 
                 if patch.hook_type.name == HookType.jump.name:
@@ -128,8 +136,6 @@ class PatchManager:
             patch_address = patch.address + patch.offset
             patch.original_bytes = patch.pymem_instance.read_bytes(int(patch_address), len(patch.write_bytes))
             patch.pymem_instance.write_bytes(patch_address, bytes(patch.original_bytes), len(patch.original_bytes))
-            if patch.patch_type.name == PatchType.hook.name and patch.code_cave_address is not None:
-                patch.pymem_instance.free(patch.code_cave_address)
 
         return True
 
@@ -149,13 +155,17 @@ class PatchManager:
 
         return self.assemble(f"call qword ptr [{hex(target_address)}]", address=relative_address)
 
-    def get_memory(self, process_config: ProcessPatchConfig, size: int):
-        if process_config.memory_allocated.used + size > process_config.memory_allocated.size:
+    def get_memory(self, process_name: str, size: int):
+        process_config = self._config._process_patch_group_map.get(process_name)
+        if process_config is None:
+            raise ValueError("Cannot assign memory. The process configuration for '{process_name}' cannot be found.")
+
+        if process_config.memory_allocated.ptr is None or process_config.memory_allocated.used + size > process_config.memory_allocated.size:
             raise ValueError("Not enough space remaining from the memory allocated at the start.")
 
-        start_address = self._memory_allocated_ptr
-        self._memory_allocated_ptr += size
-        self._memory_allocated_used += size
+        start_address = process_config.memory_allocated.ptr
+        process_config.memory_allocated.ptr += size
+        process_config.memory_allocated.used += size
         return start_address
 
     # def get_relative_jump_bytes(self, target_address: int, relative_address: int = None):

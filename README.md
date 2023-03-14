@@ -28,7 +28,8 @@ mode: 64
 description: |
   Sample game patches to demonstrate the features of the py-process-patch module
 processes:
-- name: MapleStory.exe
+- name: NotMS.exe
+  virtual_alloc: 128Kb  # Allocate pages of memory to store code caves and pointers in
   wait_for_process: true
   copies:
   - name: MapleStoryRegionCopy
@@ -47,7 +48,10 @@ processes:
       address: 0x1484C5BE5
       vars:
         region_start: 0x140001000
-        return_address: 0x1484C5C05
+      alloc_vars:  # uses memory allocated at the start
+        return_address: 
+          size: 8
+          value: 0x1484C5C05
       asm: |
         push rsi
         push rdi
@@ -68,12 +72,13 @@ processes:
         pop rbp
         mov r12, [rsp]
         add rsp, 0x08
-        mov rbx, {{ return_address | hex }}
-        jmp rbx
+        mov rbx, 
+        jmp qword ptr [{{ return_address | hex }}]
 ```
 
 ```yaml
 - name: BlackCipher64.aes
+  virtual_alloc: 128Kb  # Allocate pages of memory to store code caves and pointers in
   wait_for_process: true
   copies:
   - name: BlackCipher64Copy

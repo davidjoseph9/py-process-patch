@@ -13,7 +13,8 @@ from keystone import KS_ARCH_X86, KS_MODE_32, KS_MODE_64, keystone
 import pydantic.errors
 import win32process
 
-from config.models import GroupPatchModel, ProcessPatchConfig, ProcessSetPatchConfig, PatchType, HookType, Module
+from config.models import GroupPatchModel, ProcessPatchConfig, ProcessSetPatchConfig, PatchType, HookType, Module, \
+    MemoryAllocation
 
 KS_ARCHITECTURE_MAP = {
     'x86': KS_ARCH_X86,
@@ -86,15 +87,12 @@ class PatchConfig:
                 logger.error(f"Failed to validate the patch configuration for the process '{process_name}'.\n{str(e)}")
                 return False
 
-            if not process_config.virtual_alloc is None:
-                logger.warning("No memory allocated for patch code caves and pointers. Specify virtual_alloc in "
-                               "the process definition allocate pages of memory at the start")
-            else:
-                try:
-                    process_config.memory_allocated.size = DataSize(process_config.virtual_alloc)
-                except ValueError as e:
-                    logger.warning(f"Invalid value specified for virtual_alloc. {str(e)}")
-                    continue
+            try:
+                process_config.memory_allocated = MemoryAllocation()
+                process_config.memory_allocated.size = DataSize(process_config.virtual_alloc)
+            except ValueError as e:
+                logger.warning(f"Invalid value specified for virtual_alloc. {str(e)}")
+                continue
 
             if process_name not in self._process_patch_group_map:
                 self._process_patch_group_map[process_name] = process_config
@@ -109,7 +107,9 @@ class PatchConfig:
                     return False
                 
             try:
-                process_config.memory_allocated.ptr = process_config.pymem_instance.allocate(process_config.memory_allocated.size)
+                process_config.memory_allocated.start_address = process_config.pymem_instance.allocate(process_config.memory_allocated.size)
+                process_config.memory_allocated.ptr = process_config.memory_allocated.ptr
+                process_config.memory_allocated.size = process_config.memory_allocated.size
             except Exception as e:
                 logger.error(f"Failed to allocate '{process_config.memory_allocated.size}' in the process "
                              f"'{process_name}' using VirtualAllocEx. {str(e)}")

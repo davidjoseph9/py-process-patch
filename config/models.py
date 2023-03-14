@@ -27,6 +27,7 @@ class MemoryAllocation(pydantic.BaseModel):
     used: int = 0
     size: int = 0
     ptr: int = None
+    start_address: int = 0
 
 
 class PatchModel(pydantic.BaseModel):
@@ -95,7 +96,7 @@ class ProcessPatchConfig(pydantic.BaseModel):
     module_map: Optional[dict] = None
     wait_for_process: bool = False
 
-    virtual_alloc: Optional[str] = None
+    virtual_alloc: Optional[str] = "64Kb"
     memory_allocated: MemoryAllocation = None
 
     class Config:
