@@ -111,7 +111,8 @@ processes:
       asm: |
         pop rbx
         mov rax, [rsp+0x20]
-  
+        mov rax, [rax]
+         
         _BlackCipherCheck:
         mov rbx, {{ copy_map.BlackCipher64Copy.src_address | hex }}
         cmp rax, rbx
@@ -129,7 +130,6 @@ processes:
         add rax, {{ copy_map.BlackCipher64Copy.address | hex }}
   
         _MICPrimaryOriginal:
-        mov rax,[rax]
         mov eax,[rax]
         mov ecx,[rsp]
         mov rbx, {{ format_address(module_map[module].start_address, return_offset) }}
