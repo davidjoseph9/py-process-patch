@@ -6,7 +6,7 @@ from config.patch_config import *
 from config.models import PatchModel, PatchPointer
 from windows_apis import VirtualProtectEx
 
-
+QWORD_SIZE = 8
 MAX_32_BIT_SIGNED_VALUE = 2147483647
 
 logger = logging.getLogger()
@@ -36,6 +36,7 @@ class PatchManager:
         self._template_env.filters.update(hex=hex)
         self._config_path = None
         self._config = None
+        self._memory_allocated_ptr = None
         self.ks_assembler = None
         self.kernel32 = ctypes.windll.kernel32
 
@@ -84,34 +85,22 @@ class PatchManager:
             patch_address = patch.address + patch.offset
 
             if patch.patch_type.name == PatchType.write.name:
-                if patch.patch_bytes is not None:
-                    patch.write_bytes = bytes.fromhex(patch.patch_bytes)
+                if patch.write_bytes is not None:
+                    patch.write_bytes = bytearray.fromhex('00 00 00 00 07 80 00 03')
                 elif asm_bytes is not None:
                     patch.write_bytes = asm_bytes
             elif patch.patch_type.name == PatchType.hook.name:
-                patch.code_cave_address = patch.pymem_instance.allocate(len(asm_bytes))
+                patch.code_cave_address = self._memory_allocated_ptr
+
                 logger.debug(f"Allocating code cave at '{hex(patch.code_cave_address)}' size {len(asm_bytes)}")
+
+                patch.code_cave_address = self.get_memory(patch.process, len(asm_bytes))
                 patch.pymem_instance.write_bytes(patch.code_cave_address, asm_bytes, len(asm_bytes))
 
                 if patch.hook_type.name == HookType.jump.name:
-                    if self._config.ks_mode == KS_MODE_64:
-                        if abs(patch.address - patch.code_cave_address) > MAX_32_BIT_SIGNED_VALUE:
-                            patch.write_bytes = self.get_absolute_jump_bytes(patch.code_cave_address)
-                        else:
-                            module_def = self._config._process_patch_group_map.get(patch.process).module_map.get(patch.module)
-                            if module_def is None:
-                                raise PatchError(f"Could not assemble the short jump for the patch '{patch.name}'")
-                            patch.write_bytes = self.get_relative_jump_bytes(patch.code_cave_address, relative_address=patch_address)
-                    else:
-                        patch.write_bytes = self.get_relative_jump_bytes(patch.code_cave_address, relative_address=patch_address)
+                    patch.write_bytes = self.get_absolute_jump_bytes(patch.code_cave_address)
                 elif patch.hook_type.name == HookType.call.name:
-                    if self._config.ks_mode == KS_MODE_64:
-                        if abs(patch.address - patch.code_cave_address) > MAX_32_BIT_SIGNED_VALUE:
-                            patch.write_bytes = self.get_absolute_call_bytes(patch.code_cave_address)
-                        else:
-                            patch.write_bytes = self.get_relative_call_bytes(patch.code_cave_address)
-                    else:
-                        patch.write_bytes = self.get_relative_call_bytes(patch.code_cave_address)
+                    patch.write_bytes = self.get_absolute_call_bytes(patch.code_cave_address)
                 elif patch.hook_type.name == HookType.call_ptr.name:
                     patch.write_bytes = patch.code_cave_address.to_bytes(8, byteorder='little')
 
@@ -144,17 +133,42 @@ class PatchManager:
 
         return True
 
-    def get_relative_jump_bytes(self, target_address: int, relative_address: int = None):
-        return self.assemble(f"jmp {hex(target_address)}", address=relative_address)
+    def get_absolute_jump_bytes(self, patch: PatchModel, target_address: int, relative_address: int = None):
+        # Write the 64bit pointer to the address we'll be jumping to, to the memory we allocated at the start
+        write_bytes = target_address.to_bytes(QWORD_SIZE, byteorder='little')
+        address = self.get_memory(patch.process, len(write_bytes))
+        patch.pymem_instance.write_bytes(address, write_bytes, len(write_bytes))
 
-    def get_relative_call_bytes(self, target_address: int, relative_address: int = None):
-        return self.assemble(f"call {hex(target_address)}", address=relative_address)
+        return self.assemble(f"jmp qword ptr [{hex(target_address)}]", address=relative_address)
 
-    def get_absolute_jump_bytes(self, target_address: int, register: str = "rbx"):
-        return self.assemble(f"push {register}; mov {register}, {hex(target_address)}; jmp {register}")
+    def get_absolute_call_bytes(self, patch: PatchModel, target_address: int, relative_address: int = None):
+        # Write the 64bit pointer to the address we'll be jumping to, to the memory we allocated at the start
+        write_bytes = target_address.to_bytes(QWORD_SIZE, byteorder='little')
+        address = self.get_memory(patch.process, len(write_bytes))
+        patch.pymem_instance.write_bytes(address, write_bytes, len(write_bytes))
 
-    def get_absolute_call_bytes(self, target_address: int, register: str = "rbx", relative_address: int = None):
-        return self.assemble(f"push {register}; mov {register}, {hex(target_address)}; call {register}; pop {register};")
+        return self.assemble(f"call qword ptr [{hex(target_address)}]", address=relative_address)
+
+    def get_memory(self, process_config: ProcessPatchConfig, size: int):
+        if process_config.memory_allocated.used + size > process_config.memory_allocated.size:
+            raise ValueError("Not enough space remaining from the memory allocated at the start.")
+
+        start_address = self._memory_allocated_ptr
+        self._memory_allocated_ptr += size
+        self._memory_allocated_used += size
+        return start_address
+
+    # def get_relative_jump_bytes(self, target_address: int, relative_address: int = None):
+    #     return self.assemble(f"jmp {hex(target_address)}", address=relative_address)
+    #
+    # def get_relative_call_bytes(self, target_address: int, relative_address: int = None):
+    #     return self.assemble(f"call {hex(target_address)}", address=relative_address)
+    #
+    # def get_absolute_jump_bytes(self, target_address: int, register: str = "rbx"):
+    #     return self.assemble(f"push {register}; mov {register}, {hex(target_address)}; jmp {register}")
+    #
+    # def get_absolute_call_bytes(self, target_address: int, register: str = "rbx", relative_address: int = None):
+    #     return self.assemble(f"push {register}; mov {register}, {hex(target_address)}; call {register}; pop {register};")
 
     def assemble(self, code: str, address: int = None):
         try:

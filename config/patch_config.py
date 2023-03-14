@@ -6,6 +6,7 @@ import os.path
 
 import yaml
 import pymem
+from datasize import DataSize
 
 import windows_apis
 from keystone import KS_ARCH_X86, KS_MODE_32, KS_MODE_64, keystone
@@ -80,51 +81,68 @@ class PatchConfig:
                 continue
 
             try:
-                process_patch_config = ProcessPatchConfig(**process, copy_map=dict())
+                process_config = ProcessPatchConfig(**process, copy_map=dict())
             except Exception as e:
                 logger.error(f"Failed to validate the patch configuration for the process '{process_name}'.\n{str(e)}")
                 return False
 
-            if process_name not in self._process_patch_group_map:
-                self._process_patch_group_map[process_name] = process_patch_config
-
-            if process_patch_config.wait_for_process:
-                process_patch_config.pymem_instance = self.wait_for_process(process_name)
+            if not process_config.virtual_alloc is None:
+                logger.warning("No memory allocated for patch code caves and pointers. Specify virtual_alloc in "
+                               "the process definition allocate pages of memory at the start")
             else:
                 try:
-                    process_patch_config.pymem_instance = pymem.Pymem(process_name=process_name)
+                    process_config.memory_allocated.size = DataSize(process_config.virtual_alloc)
+                except ValueError as e:
+                    logger.warning(f"Invalid value specified for virtual_alloc. {str(e)}")
+                    continue
+
+            if process_name not in self._process_patch_group_map:
+                self._process_patch_group_map[process_name] = process_config
+
+            if process_config.wait_for_process:
+                process_config.pymem_instance = self.wait_for_process(process_name)
+            else:
+                try:
+                    process_config.pymem_instance = pymem.Pymem(process_name=process_name)
                 except pymem.exception.PymemError as e:
                     logger.error(f"Failed to get handle of the process '{process_name}'. {str(e)}")
                     return False
+                
+            try:
+                process_config.memory_allocated.ptr = process_config.pymem_instance.allocate(process_config.memory_allocated.size)
+            except Exception as e:
+                logger.error(f"Failed to allocate '{process_config.memory_allocated.size}' in the process "
+                             f"'{process_name}' using VirtualAllocEx. {str(e)}")
+                return False
 
-            self.load_process_modules(process_patch_config)
+            self.load_process_modules(process_config)
             # logger.debug(f"Modules loaded for the process '{process_name}.\n"
-            #              f"{yaml.safe_dump(list(process_patch_config.module_map.keys()))}")
+            #              f"{yaml.safe_dump(list(process_config.module_map.keys()))}")
 
-            self._load_copies(process_patch_config)
+            self._load_copies(process_config)
 
-            for group_config in process_patch_config.patch_groups:
+            for group_config in process_config.patch_groups:
                 group_config.process = process_name
-                self._load_patch_group(process_patch_config, group_config)
+                self._load_patch_group(process_config, group_config)
 
-    def _load_copies(self, process_patch_config: ProcessPatchConfig):
-        logger.debug(f"Loading copies for the process '{process_patch_config.name}'")
-        for copy_mem in process_patch_config.copies:
+    def _load_copies(self, process_config: ProcessPatchConfig):
+        logger.debug(f"Loading copies for the process '{process_config.name}'")
+        for copy_mem in process_config.copies:
             if not copy_mem.src_address and copy_mem.module:
-                if not process_patch_config.modules:
-                    logger.error(f"Cannot retrieve the base address of the module '{process_patch_config.name}' "
+                if not process_config.modules:
+                    logger.error(f"Cannot retrieve the base address of the module '{process_config.name}' "
                                  f"of the process '{copy_mem.module}'.")
                     return False
                 if copy_mem.size is None:
                     logger.error(f"Invalid copy '{copy_mem.name}'. Size of memory region must be specified. ")
                     return False
-                module_def = process_patch_config.module_map.get(copy_mem.module)
+                module_def = process_config.module_map.get(copy_mem.module)
                 if module_def is None:
                     logger.error(f"Invalid copy '{copy_mem.name}'. Module '{copy_mem.module}' not found.")
                     return False
                 copy_mem.src_address = module_def.start_address
             elif copy_mem.pointer:
-                copy_mem.src_address = self._patch_manager.load_pointer(process_patch_config, copy_mem.pointer)
+                copy_mem.src_address = self._patch_manager.load_pointer(process_config, copy_mem.pointer)
                 if copy_mem.src_address is None:
                     continue
 
@@ -140,25 +158,25 @@ class PatchConfig:
             try:
                 logger.debug(f"Setting permissions on {hex(copy_mem.src_address)} size {hex(copy_mem.size)}")
                 old_protection = ctypes.pointer(wt.DWORD())
-                success = windows_apis.VirtualProtectEx(process_patch_config.pymem_instance.process_handle, int(copy_mem.src_address),
+                success = windows_apis.VirtualProtectEx(process_config.pymem_instance.process_handle, int(copy_mem.src_address),
                                                         copy_mem.size, pymem.ressources.structure.MEMORY_PROTECTION.PAGE_EXECUTE_READWRITE,
                                                         old_protection)
                 if not success:
                     logger.error(f"Changing permissions the page of memory {hex(copy_mem.src_address)} - size: "
                                  f"{hex(copy_mem.size)} failed. kernel32.GetLastError - {windows_apis.GetLastError()}")
-                copy_mem.data = process_patch_config.pymem_instance.read_bytes(copy_mem.src_address, copy_mem.size)
+                copy_mem.data = process_config.pymem_instance.read_bytes(copy_mem.src_address, copy_mem.size)
             except pymem.exception.MemoryReadError as e:
                 logger.error(f"Cannot create the copy '{copy_mem.name}'. Failed to read data from the address "
                              f"'{hex(copy_mem.src_address)}'. {str(e)}")
                 continue
 
-            copy_mem.address = process_patch_config.pymem_instance.allocate(copy_mem.size)
+            copy_mem.address = process_config.pymem_instance.allocate(copy_mem.size)
             logger.info(f"Allocated {hex(copy_mem.size)} bytes from {hex(copy_mem.src_address)} for the copy {copy_mem.name}")
-            process_patch_config.pymem_instance.write_bytes(copy_mem.address, copy_mem.data, copy_mem.size)
+            process_config.pymem_instance.write_bytes(copy_mem.address, copy_mem.data, copy_mem.size)
 
-            process_patch_config.copy_map[copy_mem.name] = copy_mem
+            process_config.copy_map[copy_mem.name] = copy_mem
 
-    def _load_patch_group(self, process_patch_config: ProcessPatchConfig, patch_group: GroupPatchModel):
+    def _load_patch_group(self, process_config: ProcessPatchConfig, patch_group: GroupPatchModel):
         print("\n")
         logger.info(f"Loading patch list for the group '{patch_group.name}'")
 
@@ -167,7 +185,7 @@ class PatchConfig:
             full_patch_name = f"{patch_group.name}/{patch_config.name}"
             logger.info(f"Loading the patch '{full_patch_name}'")
 
-            patch_config.pymem_instance = process_patch_config.pymem_instance
+            patch_config.pymem_instance = process_config.pymem_instance
             patch_config.process = patch_group.process
 
             if patch_config.patch_type is None:
@@ -190,10 +208,10 @@ class PatchConfig:
                     logger.error(f"The patch '{patch_config.name}' is invalid.")
                     return
                 elif patch_config.module:
-                    module_def = process_patch_config.module_map.get(patch_config.module)
+                    module_def = process_config.module_map.get(patch_config.module)
                     if module_def is None:
                         logger.error(f"Cannot retrieve the module '{patch_config.module}'"
-                                     f" of the process '{process_patch_config.name}'")
+                                     f" of the process '{process_config.name}'")
                         return False
                     patch_config.address = int(module_def.start_address)
 
@@ -207,7 +225,7 @@ class PatchConfig:
             if patch_config.vars is None:
                 patch_config.vars = dict()
 
-            process_patch_group = self._process_patch_group_map[process_patch_config.name]
+            process_patch_group = self._process_patch_group_map[process_config.name]
 
             if patch_config.pointer is not None:
                 address_pointed = self._patch_manager.load_pointer(process_patch_group, patch_config.pointer)
@@ -228,21 +246,21 @@ class PatchConfig:
 
                 self._patch_manager.toggle_patch(patch_config, template_vars=patch_config.vars)
 
-    def get_process_module(self, process_patch_config: ProcessPatchConfig, module_name: str):
-        if process_patch_config.modules:
-            for module in process_patch_config.modules:
+    def get_process_module(self, process_config: ProcessPatchConfig, module_name: str):
+        if process_config.modules:
+            for module in process_config.modules:
                 if module.name == module_name:
                     return module
 
-    def load_process_modules(self, process_patch_config: ProcessPatchConfig):
-        process_patch_config.modules = []
-        process_patch_config.module_map = dict()
-        for module_handle in windows_apis.EnumProcessModules(process_patch_config.pymem_instance.process_handle):
-            module_path = win32process.GetModuleFileNameEx(process_patch_config.pymem_instance.process_handle, module_handle)
+    def load_process_modules(self, process_config: ProcessPatchConfig):
+        process_config.modules = []
+        process_config.module_map = dict()
+        for module_handle in windows_apis.EnumProcessModules(process_config.pymem_instance.process_handle):
+            module_path = win32process.GetModuleFileNameEx(process_config.pymem_instance.process_handle, module_handle)
             module_name = os.path.basename(module_path)
             module = Module(name=module_name, start_address=module_handle, path=module_path)
-            process_patch_config.modules.append(module)
-            process_patch_config.module_map[module_name] = module
+            process_config.modules.append(module)
+            process_config.module_map[module_name] = module
 
     def wait_for_process(self, process_name: str):
         logger.info(f"Waiting for the process '{process_name}' to become available")

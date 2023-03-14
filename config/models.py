@@ -23,6 +23,12 @@ class PatchPointer(pydantic.BaseModel):
     address: Optional[Any]
 
 
+class MemoryAllocation(pydantic.BaseModel):
+    used: int = 0
+    size: int = 0
+    ptr: int = None
+
+
 class PatchModel(pydantic.BaseModel):
     name: str
 
@@ -88,6 +94,9 @@ class ProcessPatchConfig(pydantic.BaseModel):
     modules: List[Any] = None
     module_map: Optional[dict] = None
     wait_for_process: bool = False
+
+    virtual_alloc: Optional[str] = None
+    memory_allocated: MemoryAllocation = None
 
     class Config:
         arbitrary_types_allowed = True
